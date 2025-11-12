@@ -55,7 +55,7 @@ jobs:
       run: |
           scp -o StrictHostKeyChecking=no deploy.zip ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/home/${{ secrets.SERVER_USERNAME }}/deploy.zip
           ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "
-            cd /home/${{ secrets.SERVER_USERNAME }}/web/feli.pakevan.web.id/public_html &&
+            cd /home/${{ secrets.SERVER_USERNAME }}/web/pakevan.web.id/public_html &&
             unzip -o /home/${{ secrets.SERVER_USERNAME }}/deploy.zip &&
             rm /home/${{ secrets.SERVER_USERNAME }}/deploy.zip &&
             php artisan optimize
