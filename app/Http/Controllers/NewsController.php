@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Article;
 use Illuminate\Http\Request;
 use App\Services\GNewsService;
 use Illuminate\Http\JsonResponse;
@@ -54,5 +55,13 @@ class NewsController extends Controller
                 'message' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function index()
+    {
+        $news = Article::all();
+        return view('news', [
+            'news' => $news
+        ]);
     }
 }

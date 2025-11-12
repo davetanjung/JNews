@@ -30,11 +30,10 @@ class GNewsService
     {
         $url = rtrim($this->baseUrl, '/') . '/' . ltrim($endpoint, '/');
 
-        // Common pattern: cache by URL+params
         $cacheKey = 'gnews:' . md5($url . json_encode($params));
 
         return Cache::remember($cacheKey, now()->addMinutes(5), function () use ($url, $params) {
-            // Append apikey param OR use header. Here we use header + query params.
+            // append API key ke header
             $response = Http::withHeaders($this->headers())
                             ->timeout(10)
                             ->get($url, $params);
