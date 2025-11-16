@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6744ddd9de0c239e9547ac14d8fb30f7",
+    "content-hash": "1008ae3f63faa43add553fab832d86fb",
     "packages": [
         {
             "name": "brick/math",
@@ -578,6 +578,52 @@
                 }
             ],
             "time": "2023-10-12T05:21:21+00:00"
+        },
+        {
+            "name": "gnews-io/gnews-io-php",
+            "version": "2.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/gnews-io/gnews-io-php.git",
+                "reference": "1e0f56d2441c1a208b012eb67c86b6f989d6ef54"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/gnews-io/gnews-io-php/zipball/1e0f56d2441c1a208b012eb67c86b6f989d6ef54",
+                "reference": "1e0f56d2441c1a208b012eb67c86b6f989d6ef54",
+                "shasum": ""
+            },
+            "require": {
+                "ext-json": "*",
+                "guzzlehttp/guzzle": "^7.0",
+                "php": "^8.0"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^9.5"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "GNews\\": "src",
+                    "GNews\\Tests\\": "tests"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "GNews API",
+                    "role": "Developer"
+                }
+            ],
+            "description": "A PHP client for GNews API",
+            "support": {
+                "issues": "https://github.com/gnews-io/gnews-io-php/issues",
+                "source": "https://github.com/gnews-io/gnews-io-php/tree/v2.1.0"
+            },
+            "time": "2025-10-12T15:15:05+00:00"
         },
         {
             "name": "graham-campbell/result-type",

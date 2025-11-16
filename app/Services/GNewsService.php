@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
+// Reverting to Laravel's Http Facade
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
+use Throwable;
 
 class GNewsService
 {
@@ -15,11 +15,16 @@ class GNewsService
     {
         $this->baseUrl = config('services.gnews.base_url', env('GNEWS_BASE_URL'));
         $this->apiKey = config('services.gnews.api_key', env('GNEWS_API_KEY'));
+        
+        // Explicit check for API Key
+        if (empty($this->apiKey)) {
+            throw new \Exception("GNEWS_API_KEY is missing in your .env or config/services.php file.", 500);
+        }
     }
 
     protected function headers()
     {
-        // GNews supports 'X-Api-Key' header or apikey query param
+        // Use the API key in the header
         return [
             'X-Api-Key' => $this->apiKey,
             'Accept' => 'application/json',
@@ -30,23 +35,26 @@ class GNewsService
     {
         $url = rtrim($this->baseUrl, '/') . '/' . ltrim($endpoint, '/');
 
-        $cacheKey = 'gnews:' . md5($url . json_encode($params));
+        // *** FIX: Using Http Facade Directly (no external client) ***
+        $response = Http::withHeaders($this->headers())
+                        ->timeout(10)
+                        ->get($url, $params);
 
-        return Cache::remember($cacheKey, now()->addMinutes(5), function () use ($url, $params) {
-            // append API key ke header
-            $response = Http::withHeaders($this->headers())
-                            ->timeout(10)
-                            ->get($url, $params);
-
-            if ($response->ok()) {
-                return $response->json();
+        if ($response->ok()) {
+            $data = $response->json();
+            
+            // Check for valid JSON structure even on 200 OK
+            if (is_array($data) && !isset($data['articles']) && isset($data['totalArticles'])) {
+                 // GNews often returns 200 OK with an empty array if filters are bad
+                 return $data;
             }
 
-            // Throw an exception you can catch in controllers
-            $status = $response->status();
-            $body = $response->body();
-            throw new \Exception("GNews API error: HTTP $status - $body", $status);
-        });
+            return $data;
+        }
+
+        $status = $response->status();
+        $body = $response->body();
+        throw new \Exception("GNews API error: HTTP $status - $body", $status);
     }
 
     // Search endpoint example
@@ -55,9 +63,9 @@ class GNewsService
         $params = array_merge([
             'q' => $q,
             'lang' => $options['lang'] ?? 'en',
-            'max' => $options['max'] ?? 10,
+            'max' => $options['max'] ?? 20, 
             'page' => $options['page'] ?? 1,
-            'sortby' => $options['sortby'] ?? 'publishedAt', // or relevance
+            'sortby' => $options['sortby'] ?? 'publishedAt',
         ], $options);
 
         return $this->get('search', $params);
@@ -67,13 +75,13 @@ class GNewsService
     public function topHeadlines(array $options = [])
     {
         $params = array_merge([
-            'category' => $options['category'] ?? 'general',
-            'lang' => $options['lang'] ?? null,
-            'country' => $options['country'] ?? null,
-            'max' => $options['max'] ?? 10,
+            // Mandating filters for US/English to maximize successful results
+            'category' => $options['category'] ?? 'general', 
+            'lang' => $options['lang'] ?? 'en',             
+            'country' => $options['country'] ?? 'us',        
+            'max' => $options['max'] ?? 20, 
         ], $options);
 
-        // Remove nulls
         $params = array_filter($params, fn($v) => !is_null($v) && $v !== '');
 
         return $this->get('top-headlines', $params);
