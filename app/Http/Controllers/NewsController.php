@@ -20,14 +20,14 @@ class NewsController extends Controller
     public function topHeadlines(): JsonResponse
     {
         $cacheKey = 'local_top_headlines';
-        $ttl = Carbon::now()->addMinutes(15); 
+        $ttl = Carbon::now()->addMinutes(15);
 
         $articles = Cache::remember($cacheKey, $ttl, function () {
             // Reads from Article Model, eager-loads Source.
-            return Article::with('source') 
-                          ->orderBy('publishedAt', 'desc')
-                          ->limit(50) 
-                          ->get();
+            return Article::with('source')
+                ->orderBy('publishedAt', 'desc')
+                ->limit(50)
+                ->get();
         });
 
         if ($articles->isEmpty()) {
@@ -54,16 +54,16 @@ class NewsController extends Controller
         }
 
         $cacheKey = 'search:' . md5($query);
-        $ttl = Carbon::now()->addHours(1); 
+        $ttl = Carbon::now()->addHours(1);
 
         $articles = Cache::remember($cacheKey, $ttl, function () use ($query) {
             // Searches the local database.
             return Article::with('source')
-                          ->where('title', 'like', '%' . $query . '%')
-                          ->orWhere('description', 'like', '%' . $query . '%')
-                          ->orderBy('publishedAt', 'desc')
-                          ->limit(50)
-                          ->get();
+                ->where('title', 'like', '%' . $query . '%')
+                ->orWhere('description', 'like', '%' . $query . '%')
+                ->orderBy('publishedAt', 'desc')
+                ->limit(50)
+                ->get();
         });
 
         if ($articles->isEmpty()) {
@@ -83,7 +83,13 @@ class NewsController extends Controller
      */
     public function index()
     {
-        // For simplicity, returns the JSON for the main headline list.
-        return $this->topHeadlines(); 
+        $articles = Article::with('source')
+            ->orderBy('publishedAt', 'desc')
+            ->limit(50)
+            ->get();
+
+        return view('news.index', compact('articles'));
     }
+
+
 }
