@@ -13,7 +13,7 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         // $schedule->command('gnews:fetch')->dailyAt('08:00'); // fetch tiap hari jam 8 AM
-        $schedule->command('app:fetch-g-news-command')->everyMinute();
+        $schedule->command('news:ingest')->dailyAt('00:00'); 
     }
 
     /**
