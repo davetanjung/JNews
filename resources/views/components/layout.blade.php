@@ -19,9 +19,9 @@
     <script type="text/javascript" src="https://app.sandbox.midtrans.com/snap/snap.js"
         data-client-key="{{ config('midtrans.client_key') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    {{-- <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script> --}}
 
-    @vite('resources/css/app.css')
+   @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 
 <body class="font-poppins">
@@ -34,8 +34,6 @@
     </main>
 
     @include('components.footer')
-
-    @vite('resources/js/app.js')
 
     {{-- <script src="{{ asset('js/app.js') }}" defer></script> --}}
 

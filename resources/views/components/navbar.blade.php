@@ -3,7 +3,8 @@
         <div class="flex items-center justify-between relative">
             <div class="px-4 h-20">
                 <a href="/" class="h-full flex items-center">
-                    <img src="https://res.cloudinary.com/daavtibr2/image/upload/v1763311265/ucaooxqt7qmkvqgruh4w.png" class="h-10 sm:h-12" alt="Soko Financial Logo" />
+                    <img src="https://res.cloudinary.com/daavtibr2/image/upload/v1763311265/ucaooxqt7qmkvqgruh4w.png"
+                        class="h-10 sm:h-12" alt="Soko Financial Logo" />
                 </a>
             </div>
 
@@ -20,13 +21,19 @@
                 <ul
                     class="flex-col rounded-b-lg bg-white md:bg-transparent md:flex-row flex md:space-x-2 lg:space-x-12 md:mt-0 text-base md:text-lg md:font-medium">
                     <li>
+                        <a href="{{ route('home') }}"
+                            class=" text-main-text hover:bg-[#f5f4f1] border-b border-[#f5f4f1] px-6 md:hover:bg-transparent md:border-0 block py-2 hover:text-primary-100 md:p-0 duration-300 {{ Route::is('home') ? 'underline underline-offset-4 font-medium text-primary-100' : '' }}">
+                            Home
+                        </a>
+                    </li>
+                    <li>
                         <a href="/about"
                             class="text-main-text hover:bg-[#f5f4f1] border-b border-[#f5f4f1] px-6
                             md:hover:bg-transparent md:border-0 block py-2 hover:text-primary-100 md:p-0 duration-300">
-                            Tentang
+                            Lorem
                         </a>
                     </li>
-                   <li class="relative group">
+                    {{-- <li class="relative group">
                         <a href="/service"
                             class="text-main-text hover:bg-[#f5f4f1] border-b border-[#f5f4f1] px-6
                             md:hover:bg-transparent md:border-0 block py-2 hover:text-primary-100 md:p-0 duration-300 
@@ -60,28 +67,7 @@
                                 </li>
                             </ul>
                         </div>
-                    </li>
-                    <li>
-                        <a href="/contact"
-                            class="text-main-text hover:bg-[#f5f4f1] border-b border-[#f5f4f1] px-6
-                            md:hover:bg-transparent md:border-0 block py-2 hover:text-primary-100 md:p-0 duration-300">
-                            Kontak
-                        </a>
-                    </li>
-                    <li>
-                        <a href="/budget"
-                            class="text-main-text hover:bg-[#f5f4f1] border-b border-[#f5f4f1] px-6
-                            md:hover:bg-transparent md:border-0 block py-2 hover:text-primary-100 md:p-0 duration-300">
-                            Kalkulator Finance
-                        </a>
-                    </li>
-                    <li>
-                        <a href="/blog"
-                            class="text-main-text hover:bg-[#f5f4f1] border-[#f5f4f1] px-6
-                            md:hover:bg-transparent md:border-0 block py-2 hover:text-primary-100 md:p-0 duration-300 hover:rounded-b-lg">
-                            Blog
-                        </a>
-                    </li>
+                    </li> --}}
                     @if (auth()->user() == null)
                         <div class="flex space-x-6 ml-auto">
                             <a href="/login"
@@ -92,17 +78,17 @@
                                 Login
                             </a>
                             <a href="/user-register"
-                            class="text-[#41479E] px-4 py-1.5 rounded-md text-sm block text-center
+                                class="text-[#41479E] px-4 py-1.5 rounded-md text-sm block text-center
                                     transition duration-300
                                     md:border-0
                                     md:px-3 md:py-1 button"
-                            style="color: #41479E !important; border: 2px solid #41479E !important;">
-                            Daftar
+                                style="color: #41479E !important; border: 2px solid #41479E !important;">
+                                Daftar
                             </a>
 
                         </div>
                     @endif
-                   {{-- <li>
+                    {{-- <li>
               <button id="dropdownNavbarLink" data-dropdown-toggle="dropdownNavbar"
                 class="font-bold text-main-text hover:bg-[#f5f4f1] border-b border-[#f5f4f1] px-6 md:hover:bg-transparent md:border-0 py-2 md:hover:text-primary-100 md:p-0 duration-300 flex items-center justify-between w-full md:w-auto">Produk
                 Kami
@@ -143,11 +129,7 @@
                 <div
                     class="--user-profile items-center gap-4 hidden absolute shadow-lg rounded-b-lg top-full w-full md:rounded-none md:shadow-none md:static md:flex md:w-auto">
                     @if (auth()->check())
-                    <a href="{{
-                        auth()->user()->role === 'Admin'
-                            ? route('dashboardAdmin')
-                            : route('dashboard')
-                    }}"
+                        <a href="{{ auth()->user()->role === 'Admin' ? route('dashboardAdmin') : route('dashboard') }}"
                             class="p-2 bg-[#f5f4f1] text-[#171717] rounded-[10px] font-bold">Dashboard</a>
                         <form id="logout-form" action="{{ route('logout') }}" method="POST" class="inline">
                             @csrf
