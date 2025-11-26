@@ -40,4 +40,11 @@ return [
         'api_key' => env('GNEWS_API_KEY'),
     ],
 
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY'),
+        'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta/'),
+        'model' => env('GEMINI_MODEL', 'models/gemini-2.5-flash'),
+        'connect_timeout' => env('GEMINI_CONNECT_TIMEOUT', 10),
+        'response_timeout' => env('GEMINI_RESPONSE_TIMEOUT', 30),
+    ],
 ];

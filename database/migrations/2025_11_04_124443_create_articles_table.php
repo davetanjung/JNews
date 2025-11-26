@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('title', 255);
             $table->text('description')->nullable();
             $table->longText('content')->nullable();
+            $table->longText('extended_content')->nullable();
             $table->string('url')->unique();
             $table->string('image')->nullable();
             
