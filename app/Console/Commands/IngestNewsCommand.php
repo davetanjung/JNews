@@ -8,6 +8,7 @@ use App\Services\GNewsService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon; // <-- Include Carbon for manual formatting
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class IngestNewsCommand extends Command 
@@ -22,6 +23,13 @@ class IngestNewsCommand extends Command
         $targets = [
             ['category' => 'general', 'country' => 'id', 'lang' => 'id', 'max' => 50],
             ['category' => 'technology', 'country' => 'us', 'lang' => 'en', 'max' => 50],
+            ['category' => 'business', 'country' => 'us', 'lang' => 'en', 'max' => 50],
+            // lebih lax, lifestyle
+            ['category' => 'sports', 'country' => 'us', 'lang' => 'en', 'max' => 50],
+            ['category' => 'entertainment', 'country' => 'us', 'lang' => 'en', 'max' => 50],
+            // if mau lebih serious
+            // ['category' => 'health', 'country' => 'us', 'lang' => 'en', 'max' => 50],
+            // ['category' => 'science', 'country' => 'us', 'lang' => 'en', 'max' => 50],
         ];
 
         $totalArticlesProcessed = 0;
@@ -67,6 +75,7 @@ class IngestNewsCommand extends Command
                             'publishedAt' => $publishedAt, // Use the sanitized date string
                             'lang' => $articleData['lang'] ?? null,
                             'source_id' => $sourceId,
+                            'category' => $target['category'] ?? null,
                             'created_at' => now(), 
                             'updated_at' => now(),
                         ];
@@ -80,7 +89,7 @@ class IngestNewsCommand extends Command
                     // Batch Article upsert
                     if (!empty($articlesToSave)) {
                         Article::upsert($articlesToSave, ['id'], [
-                            'title', 'description', 'content', 'url', 'image', 'publishedAt', 'lang', 'source_id', 'updated_at'
+                            'title', 'description', 'content', 'url', 'image', 'publishedAt', 'lang', 'source_id','category', 'updated_at'
                         ]);
                         $totalArticlesProcessed += count($articlesToSave);
                     }
@@ -91,7 +100,7 @@ class IngestNewsCommand extends Command
             } catch (Throwable $e) {
                 // If the error is still date-related, it will be caught here
                 $this->error("Ingestion failed for target " . json_encode($target) . ": " . $e->getMessage());
-                \Log::error("GNews Ingestion Error", ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+                Log::error("GNews Ingestion Error", ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             }
         }
 

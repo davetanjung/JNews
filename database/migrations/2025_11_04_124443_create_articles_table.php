@@ -30,6 +30,8 @@ return new class extends Migration
                   ->references('id')
                   ->on('sources')
                   ->onDelete('cascade');
+
+            $table->string('category', 50)->nullable();
                   
             $table->timestamps();
         });
