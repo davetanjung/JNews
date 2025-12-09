@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Article;
-use App\Models\Source;
+use App\Models\WeeklySummary;
 use App\Services\GeminiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -77,26 +77,136 @@ class NewsController extends Controller
     /**
      * Index method with search and pagination.
      */
-    public function index(Request $request)
+    // public function index(Request $request)
+    // {
+    //     $search = $request->input('search');
+    //     $perPage = 12;
+
+    //     $query = Article::with('source')->orderBy('publishedAt', 'desc');
+
+    //     if ($search) {
+    //         $query->where(function ($q) use ($search) {
+    //             $q->where('title', 'like', '%' . $search . '%')
+    //                 ->orWhere('description', 'like', '%' . $search . '%')
+    //                 ->orWhereHas('source', function ($q) use ($search) {
+    //                     $q->where('name', 'like', '%' . $search . '%');
+    //                 });
+    //         });
+    //     }
+
+    //     $articles = $query->paginate($perPage);
+
+    //     return view('news.index', compact('articles', 'search'));
+    // }
+
+    /**
+     * Index method with Search, simple Category column filter, and Pagination.
+     */
+
+    public function index(Request $request, GeminiService $gemini)
     {
+        // 1. Get Inputs
         $search = $request->input('search');
+        $category = $request->input('category');
         $perPage = 12;
+
+        // ==========================================
+        //  SUMMARY LOGIC (Check DB -> Generate -> Save)
+        // ==========================================
+        
+        $summary = null;
+        $now = Carbon::now();
+        $currentYear = $now->year;
+        $currentWeek = $now->weekOfYear;
+
+        // Check if user clicked a button or if we just need to load an existing one
+        $shouldGenerate = $request->input('generate_summary');
+        $shouldRegenerate = $request->input('regenerate_summary');
+
+        // A. Always try to fetch existing summary from DB first
+        $existingSummary = WeeklySummary::where('year', $currentYear)
+            ->where('week_number', $currentWeek)
+            // If category is null, we look for a summary where category is NULL (General)
+            ->where('category', $category) 
+            ->first();
+
+        if ($existingSummary) {
+            $summary = $existingSummary->summary_content;
+        }
+
+        // B. If user clicked "Generate" (and it's missing) OR "Regenerate" (force update)
+        if (($shouldGenerate && !$existingSummary) || $shouldRegenerate) {
+            
+            // 1. Get recent articles for context
+            $articleQuery = Article::whereBetween('publishedAt', [$now->startOfWeek(), $now->endOfWeek()]);
+            if ($category) {
+                $articleQuery->where('category', $category);
+            }
+            
+            // Limit to 15 articles to keep Gemini tokens low
+            $articlesForAI = $articleQuery->latest()->limit(15)->get(['title', 'description']);
+
+            if ($articlesForAI->isNotEmpty()) {
+                // 2. Prepare Prompt
+                $list = $articlesForAI->map(fn($a) => "- {$a->title}: {$a->description}")->implode("\n");
+                $catName = $category ? ucfirst($category) : "General";
+                
+                $prompt = "Act as a news anchor. Write a cohesive, engaging 2-paragraph weekly summary for {$catName} news based on these headlines. Do not simply list them; weave them into a narrative:\n\n" . $list;
+
+                // 3. Call Gemini
+                $newContent = $gemini->generateSummary($prompt);
+
+                // 4. Save to DB (Update or Create)
+                WeeklySummary::updateOrCreate(
+                    [
+                        'year' => $currentYear,
+                        'week_number' => $currentWeek,
+                        'category' => $category
+                    ],
+                    ['summary_content' => $newContent]
+                );
+
+                $summary = $newContent;
+            } else {
+                $summary = "Not enough news articles this week to generate a summary.";
+            }
+        }
+
+        // ==========================================
+        //  STANDARD GRID LOGIC (Search & Pagination)
+        // ==========================================
 
         $query = Article::with('source')->orderBy('publishedAt', 'desc');
 
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', '%' . $search . '%')
-                    ->orWhere('description', 'like', '%' . $search . '%')
-                    ->orWhereHas('source', function ($q) use ($search) {
-                        $q->where('name', 'like', '%' . $search . '%');
-                    });
+                  ->orWhere('description', 'like', '%' . $search . '%')
+                  ->orWhereHas('source', function ($q) use ($search) {
+                      $q->where('name', 'like', '%' . $search . '%');
+                  });
             });
+        }
+
+        if ($category) {
+            $query->where('category', $category);
         }
 
         $articles = $query->paginate($perPage);
 
-        return view('news.index', compact('articles', 'search'));
+        // Get unique categories for buttons
+        $categories = Article::select('category')
+            ->whereNotNull('category')
+            ->distinct()
+            ->pluck('category');
+
+        return view('news.index', [
+            'articles' => $articles,
+            'search' => $search,
+            'categories' => $categories,
+            'activeCategory' => $category,
+            'summary' => $summary // <--- Pass the summary to the view
+        ]);
     }
 
 
@@ -127,5 +237,17 @@ class NewsController extends Controller
             'article' => $article,
             'expandedContent' => $expanded
         ]);
+    }
+
+
+    // later ill move this to the gemini service commands 
+    private function generateNewsSummary($news, $category)
+    {
+        // Simple example - you can enhance this with AI
+        $count = $news->count();
+        $categoryText = $category === 'all' ? 'across all categories' : "in {$category}";
+
+        return "Found {$count} recent articles {$categoryText}. " .
+            $news->pluck('title')->take(3)->implode('. ') . ".";
     }
 }
