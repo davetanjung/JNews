@@ -193,7 +193,6 @@ class NewsController extends Controller
         return view('news.index', [
             'articles' => $articles,
             'search' => $search,
-            'categories' => $categories,
             'activeCategory' => $category,
             'summary' => $summary // <--- Pass the summary to the view
         ]);
