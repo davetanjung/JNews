@@ -172,10 +172,6 @@ class NewsController extends Controller
             }
         }
 
-        // ==========================================
-        //  STANDARD GRID LOGIC (Search & Pagination)
-        // ==========================================
-
         $query = Article::with('source')->orderBy('publishedAt', 'desc');
 
         if ($search) {
