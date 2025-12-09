@@ -103,6 +103,8 @@ class NewsController extends Controller
      * Index method with Search, simple Category column filter, and Pagination.
      */
 
+    // In App\Http\Controllers\NewsController.php
+
     public function index(Request $request, GeminiService $gemini)
     {
         // 1. Get Inputs
@@ -111,9 +113,9 @@ class NewsController extends Controller
         $perPage = 12;
 
         // ==========================================
-        //  SUMMARY LOGIC (Check DB -> Generate -> Save)
+        //  SUMMARY LOGIC (Check DB -> Generate -> Save)
         // ==========================================
-        
+
         $summary = null;
         $now = Carbon::now();
         $currentYear = $now->year;
@@ -126,8 +128,7 @@ class NewsController extends Controller
         // A. Always try to fetch existing summary from DB first
         $existingSummary = WeeklySummary::where('year', $currentYear)
             ->where('week_number', $currentWeek)
-            // If category is null, we look for a summary where category is NULL (General)
-            ->where('category', $category) 
+            ->where('category', $category)
             ->first();
 
         if ($existingSummary) {
@@ -136,37 +137,65 @@ class NewsController extends Controller
 
         // B. If user clicked "Generate" (and it's missing) OR "Regenerate" (force update)
         if (($shouldGenerate && !$existingSummary) || $shouldRegenerate) {
-            
+
             // 1. Get recent articles for context
-            $articleQuery = Article::whereBetween('publishedAt', [$now->startOfWeek(), $now->endOfWeek()]);
+            $articleQuery = Article::whereBetween('publishedAt', [
+                // 🛑 FIX: Ensure UTC timezone for correct DB comparison
+                $now->copy()->startOfWeek()->timezone('UTC'),
+                $now->copy()->endOfWeek()->timezone('UTC')
+            ]);
             if ($category) {
                 $articleQuery->where('category', $category);
             }
-            
-            // Limit to 15 articles to keep Gemini tokens low
+
             $articlesForAI = $articleQuery->latest()->limit(15)->get(['title', 'description']);
 
             if ($articlesForAI->isNotEmpty()) {
-                // 2. Prepare Prompt
+                // 2. Prepare Prompt and Call Gemini
                 $list = $articlesForAI->map(fn($a) => "- {$a->title}: {$a->description}")->implode("\n");
                 $catName = $category ? ucfirst($category) : "General";
-                
-                $prompt = "Act as a news anchor. Write a cohesive, engaging 2-paragraph weekly summary for {$catName} news based on these headlines. Do not simply list them; weave them into a narrative:\n\n" . $list;
+                // Revised Prompt Instruction
+                $prompt = "Generate a highly condensed, objective, and journalistic news brief for the '{$catName}' category this week. 
 
-                // 3. Call Gemini
+Format the entire output as follows:
+1. One concise, three-sentence introductory paragraph.
+2. An HTML numbered list (<ol>, <li>) of the top 3-5 key headlines. **Do not use Markdown.**
+
+The entire response must be under 150 words. Do not use greetings or conversational phrases.
+
+Article Headlines for Synthesis:
+" . $list;
+                // Inside NewsController::index, under section B.
+
                 $newContent = $gemini->generateSummary($prompt);
 
-                // 4. Save to DB (Update or Create)
+                $contentToSave = $newContent ?? "AI summary generation failed. Check logs for API errors.";
+
                 WeeklySummary::updateOrCreate(
                     [
                         'year' => $currentYear,
                         'week_number' => $currentWeek,
                         'category' => $category
                     ],
-                    ['summary_content' => $newContent]
+                    // Save the guaranteed non-null string
+                    ['summary_content' => $contentToSave]
                 );
 
-                $summary = $newContent;
+                $summary = $contentToSave;
+
+                // ... (rest of the else block remains the same)
+
+                // 3. Save to DB (Update or Create)
+                // WeeklySummary::updateOrCreate(
+                //     [
+                //         'year' => $currentYear,
+                //         'week_number' => $currentWeek,
+                //         'category' => $category
+                //     ],
+                //     ['summary_content' => $newContent]
+                // );
+
+                // $summary = $newContent;
             } else {
                 $summary = "Not enough news articles this week to generate a summary.";
             }
@@ -177,10 +206,10 @@ class NewsController extends Controller
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', '%' . $search . '%')
-                  ->orWhere('description', 'like', '%' . $search . '%')
-                  ->orWhereHas('source', function ($q) use ($search) {
-                      $q->where('name', 'like', '%' . $search . '%');
-                  });
+                    ->orWhere('description', 'like', '%' . $search . '%')
+                    ->orWhereHas('source', function ($q) use ($search) {
+                        $q->where('name', 'like', '%' . $search . '%');
+                    });
             });
         }
 
@@ -190,14 +219,14 @@ class NewsController extends Controller
 
         $articles = $query->paginate($perPage);
 
+        // Final view data
         return view('news.index', [
             'articles' => $articles,
             'search' => $search,
-            'activeCategory' => $category,
-            'summary' => $summary // <--- Pass the summary to the view
+            'activeCategory' => $category, // Used by the category selector component
+            'summary' => $summary // Used by the summary box component
         ]);
     }
-
 
     public function show($id)
     {
@@ -227,5 +256,4 @@ class NewsController extends Controller
             'expandedContent' => $expanded
         ]);
     }
-
 }

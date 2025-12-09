@@ -22,7 +22,7 @@ class SummarizeWeekly extends Command
         $now = Carbon::now();
         $year = $now->year;
         $week = $now->weekOfYear;
-        
+
         $startOfWeek = $now->copy()->startOfWeek();
         $endOfWeek = $now->copy()->endOfWeek();
 
@@ -37,7 +37,7 @@ class SummarizeWeekly extends Command
 
         foreach ($categories as $category) {
             $catName = $category ?? 'General (All News)';
-            
+
             // Check if exists (unless --force is used)
             $exists = WeeklySummary::where('year', $year)
                 ->where('week_number', $week)
@@ -47,12 +47,15 @@ class SummarizeWeekly extends Command
             if ($exists && !$this->option('force')) {
                 // Skip if already done
                 $bar->advance();
-                continue; 
+                continue;
             }
 
             // 3. Fetch Articles for this Category & Week
-            $query = Article::whereBetween('publishedAt', [$startOfWeek, $endOfWeek]);
+            // In NewsController::index or SummarizeWeekly::handle
             
+            // 3. The Query
+            $query = Article::whereBetween('publishedAt', [$startOfWeek, $endOfWeek]);
+
             if ($category) {
                 $query->where('category', $category);
             }
@@ -82,7 +85,6 @@ class SummarizeWeekly extends Command
                     ],
                     ['summary_content' => $content]
                 );
-
             } catch (\Exception $e) {
                 $this->error("\nFailed to generate for {$catName}: " . $e->getMessage());
             }

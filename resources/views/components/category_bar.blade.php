@@ -10,8 +10,8 @@
                 'business',
                 'sports',
                 'entertainment',
-                'health',
-                'science'
+                // 'health',
+                // 'science'
             ];
         @endphp
 

@@ -12,27 +12,28 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('articles', function (Blueprint $table) {
-           $table->string('id')->primary();
-            
+            $table->string('id')->primary();
+
             $table->string('title', 255);
             $table->text('description')->nullable();
             $table->longText('content')->nullable();
             $table->longText('extended_content')->nullable();
-            $table->string('url')->unique();
-            $table->string('image')->nullable();
-            
+            // Corrected line: Specify the length for the column AND the index
+            // CORRECT FIX: Limit the index length to 191 characters
+            $table->string('url', 1024)->unique(null, 191);
+            $table->string('image', 1024)->nullable();
             $table->dateTime('publishedAt');
-            
+
             $table->string('lang', 5)->nullable();
-            
+
             $table->string('source_id');
             $table->foreign('source_id')
-                  ->references('id')
-                  ->on('sources')
-                  ->onDelete('cascade');
+                ->references('id')
+                ->on('sources')
+                ->onDelete('cascade');
 
             $table->string('category', 50)->nullable();
-                  
+
             $table->timestamps();
         });
     }
