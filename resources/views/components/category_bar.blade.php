@@ -1,8 +1,20 @@
-@props(['categories', 'selected' => null, 'summary' => null]) 
+@props(['selected' => null, 'summary' => null]) 
 
 <div class="space-y-6">
     {{-- Category Buttons --}}
     <div class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+        @php
+            $categories = [
+                'general',
+                'technology',
+                'business',
+                'sports',
+                'entertainment',
+                'health',
+                'science'
+            ];
+        @endphp
+
         {{-- "All News" Button --}}
         <a 
             href="{{ route('home') }}" 
@@ -14,7 +26,7 @@
             All News
         </a>
 
-        {{-- Dynamic Loop from Database --}}
+        {{-- Loop through your fixed list --}}
         @foreach($categories as $cat)
             <a 
                 href="{{ route('home', ['category' => $cat]) }}" 
@@ -39,13 +51,12 @@
                 </h3>
 
                 @if($summary)
-                    {{-- USE MARKDOWN PARSING HERE --}}
                     <div class="prose prose-sm prose-blue text-gray-600 leading-relaxed max-w-none">
                         {!! Str::markdown($summary) !!}
                     </div>
                 @else
                     <p class="text-gray-500 text-sm italic">
-                        Get a quick AI-powered recap of the top stories for this week.
+                        Get a quick AI-powered recap of the top {{ $selected ?? 'global' }} stories for this week.
                     </p>
                 @endif
             </div>
@@ -53,6 +64,7 @@
             {{-- Action Buttons --}}
             <div class="shrink-0 w-full md:w-auto">
                 <form method="GET" action="{{ route('home') }}">
+                    {{-- Keep the category selected when clicking Generate --}}
                     @if($selected)
                         <input type="hidden" name="category" value="{{ $selected }}">
                     @endif

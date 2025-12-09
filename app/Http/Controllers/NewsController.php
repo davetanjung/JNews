@@ -190,12 +190,6 @@ class NewsController extends Controller
 
         $articles = $query->paginate($perPage);
 
-        // Get unique categories for buttons
-        $categories = Article::select('category')
-            ->whereNotNull('category')
-            ->distinct()
-            ->pluck('category');
-
         return view('news.index', [
             'articles' => $articles,
             'search' => $search,
