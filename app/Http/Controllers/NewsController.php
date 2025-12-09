@@ -239,15 +239,4 @@ class NewsController extends Controller
         ]);
     }
 
-
-    // later ill move this to the gemini service commands 
-    private function generateNewsSummary($news, $category)
-    {
-        // Simple example - you can enhance this with AI
-        $count = $news->count();
-        $categoryText = $category === 'all' ? 'across all categories' : "in {$category}";
-
-        return "Found {$count} recent articles {$categoryText}. " .
-            $news->pluck('title')->take(3)->implode('. ') . ".";
-    }
 }
