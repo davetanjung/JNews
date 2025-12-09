@@ -38,7 +38,7 @@
 
         {{-- category picker --}}
         <div class="mb-8 flex justify-center">
-            <x-category-bar :categories="$categories" :selected="request('category')" :summary="$summary" />
+            <x-category_bar :categories="$categories" :selected="request('category')" :summary="$summary" />
         </div>
 
         @if ($search || request('category'))
