@@ -5,8 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Article;
 use App\Services\GeminiService;
 use Illuminate\Console\Command;
-use Log;
-
+use Illuminate\Support\Facades\Log;
 class ExtendArticles extends Command
 {
     protected $signature = 'articles:extend';

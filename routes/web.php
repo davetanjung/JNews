@@ -10,3 +10,5 @@ Route::prefix('api')->group(function () {
     Route::get('news/top-headlines', [NewsController::class, 'topHeadlines']);
     Route::get('news/search', [NewsController::class, 'search']);
 });
+
+Route::get('/news/summary', [NewsController::class, 'getSummary'])->name('news.summary');

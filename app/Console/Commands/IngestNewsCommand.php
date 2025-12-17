@@ -8,9 +8,10 @@ use App\Services\GNewsService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon; // <-- Include Carbon for manual formatting
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
-class IngestNewsCommand extends Command 
+class IngestNewsCommand extends Command
 {
     protected $signature = 'news:ingest';
     protected $description = 'Fetch top headlines from GNews.io and save/update them in the local database.';
@@ -18,10 +19,17 @@ class IngestNewsCommand extends Command
     public function handle(GNewsService $gNewsService)
     {
         $this->info('Starting GNews data ingestion...');
-        
+
         $targets = [
             ['category' => 'general', 'country' => 'id', 'lang' => 'id', 'max' => 50],
             ['category' => 'technology', 'country' => 'us', 'lang' => 'en', 'max' => 50],
+            ['category' => 'business', 'country' => 'us', 'lang' => 'en', 'max' => 50],
+            // lebih lax, lifestyle
+            ['category' => 'sports', 'country' => 'us', 'lang' => 'en', 'max' => 50],
+            ['category' => 'entertainment', 'country' => 'us', 'lang' => 'en', 'max' => 50],
+            // if mau lebih serious
+            // ['category' => 'health', 'country' => 'us', 'lang' => 'en', 'max' => 50],
+            // ['category' => 'science', 'country' => 'us', 'lang' => 'en', 'max' => 50],
         ];
 
         $totalArticlesProcessed = 0;
@@ -37,14 +45,14 @@ class IngestNewsCommand extends Command
                 }
 
                 // Use a transaction for atomic batch saving
-                DB::transaction(function () use ($articles, &$totalArticlesProcessed) {
+                DB::transaction(function () use ($articles, &$totalArticlesProcessed, $target) {
                     $articlesToSave = [];
                     $sourcesToSave = [];
-                    
-                    foreach ($articles as $articleData) { 
-                        
+
+                    foreach ($articles as $articleData) {
+
                         $sourceId = $articleData['source']['id'];
-                        
+
                         if (!isset($sourcesToSave[$sourceId])) {
                             $sourcesToSave[$sourceId] = [
                                 'id' => $sourceId,
@@ -67,31 +75,40 @@ class IngestNewsCommand extends Command
                             'publishedAt' => $publishedAt, // Use the sanitized date string
                             'lang' => $articleData['lang'] ?? null,
                             'source_id' => $sourceId,
-                            'created_at' => now(), 
+                            'category' => $target['category'] ?? null,
+                            'created_at' => now(),
                             'updated_at' => now(),
                         ];
                     }
 
                     // Batch Source upsert
                     if (!empty($sourcesToSave)) {
-                         Source::upsert(array_values($sourcesToSave), ['id'], ['name', 'url', 'country', 'updated_at']);
+                        Source::upsert(array_values($sourcesToSave), ['id'], ['name', 'url', 'country', 'updated_at']);
                     }
 
                     // Batch Article upsert
                     if (!empty($articlesToSave)) {
                         Article::upsert($articlesToSave, ['id'], [
-                            'title', 'description', 'content', 'url', 'image', 'publishedAt', 'lang', 'source_id', 'updated_at'
+                            'title',
+                            'description',
+                            'content',
+                            'url',
+                            'image',
+                            'publishedAt',
+                            'lang',
+                            'source_id',
+                            'category',
+                            'updated_at'
                         ]);
                         $totalArticlesProcessed += count($articlesToSave);
                     }
                 });
 
                 $this->info("Successfully processed articles for target: " . json_encode($target));
-
             } catch (Throwable $e) {
                 // If the error is still date-related, it will be caught here
                 $this->error("Ingestion failed for target " . json_encode($target) . ": " . $e->getMessage());
-                \Log::error("GNews Ingestion Error", ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+                Log::error("GNews Ingestion Error", ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             }
         }
 

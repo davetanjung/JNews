@@ -149,4 +149,9 @@ Content:
 
         return $this->sendPrompt($prompt);
     }
+
+    public function generateSummary(string $prompt): ?string
+    {
+        return $this->sendPrompt($prompt);
+    }
 }

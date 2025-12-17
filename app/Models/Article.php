@@ -22,6 +22,7 @@ class Article extends Model
         'publishedAt',
         'lang',
         'source_id',
+        'category'
     ];
 
     protected $casts = [
