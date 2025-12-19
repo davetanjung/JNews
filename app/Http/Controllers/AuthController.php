@@ -57,7 +57,7 @@ class AuthController extends Controller
         if (Auth::attempt($credentials)) {
             $request->session()->regenerate(); // Important for security (prevents session fixation)
 
-            return redirect()->intended('home'); // Redirects to where they wanted to go
+            return redirect()->intended('/'); // Redirects to where they wanted to go
         }
 
         // 3. If failed, go back with error
