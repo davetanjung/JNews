@@ -29,6 +29,7 @@ class GeminiService
      */
     public function sendPrompt(string $prompt): ?string
     {
+        set_time_limit(0);
         Log::info('Gemini Prompt Sent', [
             'preview' => substr($prompt, 0, 500)
         ]);

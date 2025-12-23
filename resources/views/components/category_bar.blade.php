@@ -1,4 +1,4 @@
-@props(['selected' => null, 'summary' => null]) 
+@props(['selected' => null, 'subcategories' => null, 'selectedSubcategory' => null, 'summary' => null]) 
 
 <div class="space-y-6">
     {{-- Category Buttons --}}
@@ -26,7 +26,7 @@
             All News
         </a>
 
-        {{-- Loop through your fixed list --}}
+        {{-- Loop through categories --}}
         @foreach($categories as $cat)
             <a 
                 href="{{ route('home', ['category' => $cat]) }}" 
@@ -40,6 +40,26 @@
         @endforeach
     </div>
 
+    {{-- Subcategory Pills (shown after subcategories are generated) --}}
+    @if($subcategories && count($subcategories) > 0)
+        <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
+            <h4 class="text-sm font-semibold text-gray-700 mb-3">📂 Select a Topic:</h4>
+            <div class="flex flex-wrap gap-2">
+                @foreach($subcategories as $subcat)
+                    <a 
+                        href="{{ route('home', ['category' => $selected, 'subcategory' => $subcat]) }}" 
+                        class="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
+                               {{ $selectedSubcategory === $subcat 
+                                  ? 'bg-[#41479E] text-white shadow-sm' 
+                                  : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' }}"
+                    >
+                        {{ ucwords(str_replace('-', ' ', $subcat)) }}
+                    </a>
+                @endforeach
+            </div>
+        </div>
+    @endif
+
     {{-- Summary Box --}}
     <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
         <div class="flex flex-col md:flex-row gap-6 items-start md:items-center justify-between">
@@ -47,13 +67,23 @@
             <div class="flex-1 space-y-2">
                 <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
                     <span class="text-[#41479E]">✨</span>
-                    {{ is_null($selected) ? 'All News' : ucfirst($selected) }} Weekly Summary
+                    @if($selectedSubcategory)
+                        {{ ucwords(str_replace('-', ' ', $selectedSubcategory)) }} Summary
+                    @elseif($subcategories)
+                        Choose a Topic Above
+                    @else
+                        {{ is_null($selected) ? 'All News' : ucfirst($selected) }} Weekly Summary
+                    @endif
                 </h3>
 
                 @if($summary)
                     <div class="prose prose-sm prose-blue text-gray-600 leading-relaxed max-w-none">
                         {!! Str::markdown($summary) !!}
                     </div>
+                @elseif($subcategories && !$selectedSubcategory)
+                    <p class="text-gray-500 text-sm italic">
+                        👆 Select a topic above to view its weekly summary
+                    </p>
                 @else
                     <p class="text-gray-500 text-sm italic">
                         Get a quick AI-powered recap of the top {{ $selected ?? 'global' }} stories for this week.
@@ -64,12 +94,16 @@
             {{-- Action Buttons --}}
             <div class="shrink-0 w-full md:w-auto">
                 <form method="GET" action="{{ route('home') }}">
-                    {{-- Keep the category selected when clicking Generate --}}
+                    {{-- Keep the category selected --}}
                     @if($selected)
                         <input type="hidden" name="category" value="{{ $selected }}">
                     @endif
+                    @if($selectedSubcategory)
+                        <input type="hidden" name="subcategory" value="{{ $selectedSubcategory }}">
+                    @endif
 
                     @if($summary)
+                        {{-- Refresh Summary Button --}}
                         <button 
                             type="submit"
                             name="regenerate_summary"
@@ -81,7 +115,13 @@
                             </svg>
                             Refresh Summary
                         </button>
-                    @else
+                    @elseif($subcategories && !$selectedSubcategory)
+                        {{-- When topics exist but none selected - do nothing or show disabled button --}}
+                        <div class="w-full px-5 py-2.5 bg-gray-100 text-gray-400 rounded-lg font-medium text-sm text-center cursor-not-allowed">
+                            Select a Topic First
+                        </div>
+                    @elseif($selectedSubcategory)
+                        {{-- Generate Summary for Selected Topic --}}
                         <button 
                             type="submit"
                             name="generate_summary"
@@ -92,6 +132,19 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                             </svg>
                             Generate Summary
+                        </button>
+                    @else
+                        {{-- Discover Topics Button (initial state) --}}
+                        <button 
+                            type="submit"
+                            name="generate_summary"
+                            value="1"
+                            class="w-full px-6 py-2.5 bg-[#41479E] text-white rounded-lg font-medium hover:bg-[#353d82] transition-colors shadow-sm flex items-center justify-center gap-2 text-sm"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            Discover Topics
                         </button>
                     @endif
                 </form>

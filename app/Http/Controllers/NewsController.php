@@ -9,198 +9,229 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 
 class NewsController extends Controller
 {
-    /**
-     * Display a paginated list of top headlines from the local database (Source of Truth).
-     */
-    public function topHeadlines(): JsonResponse
-    {
-        $cacheKey = 'local_top_headlines';
-        $ttl = Carbon::now()->addMinutes(15);
-
-        $articles = Cache::remember($cacheKey, $ttl, function () {
-            return Article::with('source')
-                ->orderBy('publishedAt', 'desc')
-                ->limit(50)
-                ->get();
-        });
-
-        if ($articles->isEmpty()) {
-            return response()->json(['message' => 'No articles found. The ingestion command may need to be run.'], 404);
-        }
-
-        return response()->json([
-            'status' => 'ok',
-            'totalResults' => $articles->count(),
-            'articles' => $articles,
-            'served_from' => Cache::has($cacheKey) ? 'cache' : 'database'
-        ]);
-    }
-
-    /**
-     * Search the local database for articles.
-     */
-    public function search(Request $request): JsonResponse
-    {
-        $query = $request->query('q');
-
-        if (!$query) {
-            return response()->json(['message' => 'Please provide a search query (q).'], 400);
-        }
-
-        $cacheKey = 'search:' . md5($query);
-        $ttl = Carbon::now()->addHours(1);
-
-        $articles = Cache::remember($cacheKey, $ttl, function () use ($query) {
-            return Article::with('source')
-                ->where('title', 'like', '%' . $query . '%')
-                ->orWhere('description', 'like', '%' . $query . '%')
-                ->orderBy('publishedAt', 'desc')
-                ->limit(50)
-                ->get();
-        });
-
-        if ($articles->isEmpty()) {
-            return response()->json(['message' => "No articles found matching '{$query}'."], 404);
-        }
-
-        return response()->json([
-            'status' => 'ok',
-            'totalResults' => $articles->count(),
-            'articles' => $articles,
-            'served_from' => Cache::has($cacheKey) ? 'cache' : 'database'
-        ]);
-    }
-
-    /**
-     * Index method with search and pagination.
-     */
-    // public function index(Request $request)
-    // {
-    //     $search = $request->input('search');
-    //     $perPage = 12;
-
-    //     $query = Article::with('source')->orderBy('publishedAt', 'desc');
-
-    //     if ($search) {
-    //         $query->where(function ($q) use ($search) {
-    //             $q->where('title', 'like', '%' . $search . '%')
-    //                 ->orWhere('description', 'like', '%' . $search . '%')
-    //                 ->orWhereHas('source', function ($q) use ($search) {
-    //                     $q->where('name', 'like', '%' . $search . '%');
-    //                 });
-    //         });
-    //     }
-
-    //     $articles = $query->paginate($perPage);
-
-    //     return view('news.index', compact('articles', 'search'));
-    // }
-
-    /**
-     * Index method with Search, simple Category column filter, and Pagination.
-     */
-
-    // In App\Http\Controllers\NewsController.php
-
     public function index(Request $request, GeminiService $gemini)
     {
-        // 1. Get Inputs
         $search = $request->input('search');
         $category = $request->input('category');
+        $subcategory = $request->input('subcategory');
         $perPage = 12;
 
-        // ==========================================
-        //  SUMMARY LOGIC (Check DB -> Generate -> Save)
-        // ==========================================
-
         $summary = null;
+        $subcategories = null;
         $now = Carbon::now();
         $currentYear = $now->year;
         $currentWeek = $now->weekOfYear;
 
-        // Check if user clicked a button or if we just need to load an existing one
         $shouldGenerate = $request->input('generate_summary');
         $shouldRegenerate = $request->input('regenerate_summary');
 
-        // A. Always try to fetch existing summary from DB first
-        $existingSummary = WeeklySummary::where('year', $currentYear)
+        // Step 1: Check if subcategories already exist in DB
+        $existingSubcategories = WeeklySummary::where('year', $currentYear)
             ->where('week_number', $currentWeek)
             ->where('category', $category)
-            ->first();
+            ->whereNull('summary_content')
+            ->whereNotNull('subcategory')
+            ->pluck('subcategory')
+            ->toArray();
 
-        if ($existingSummary) {
-            $summary = $existingSummary->summary_content;
+        if (!empty($existingSubcategories)) {
+            $subcategories = $existingSubcategories;
         }
 
-        // B. If user clicked "Generate" (and it's missing) OR "Regenerate" (force update)
-        if (($shouldGenerate && !$existingSummary) || $shouldRegenerate) {
+        // Step 2: Check if summary exists for selected subcategory
+        if ($subcategory) {
+            $existingSummary = WeeklySummary::where('year', $currentYear)
+                ->where('week_number', $currentWeek)
+                ->where('category', $category)
+                ->where('subcategory', $subcategory)
+                ->whereNotNull('summary_content')
+                ->first();
 
-            // 1. Get recent articles for context
-            $articleQuery = Article::whereBetween('publishedAt', [
-                // 🛑 FIX: Ensure UTC timezone for correct DB comparison
-                $now->copy()->startOfWeek()->timezone('UTC'),
-                $now->copy()->endOfWeek()->timezone('UTC')
-            ]);
-            if ($category) {
-                $articleQuery->where('category', $category);
-            }
-
-            $articlesForAI = $articleQuery->latest()->limit(15)->get(['title', 'description']);
-
-            if ($articlesForAI->isNotEmpty()) {
-                // 2. Prepare Prompt and Call Gemini
-                $list = $articlesForAI->map(fn($a) => "- {$a->title}: {$a->description}")->implode("\n");
-                $catName = $category ? ucfirst($category) : "General";
-                // Revised Prompt Instruction
-                $prompt = "Generate a highly condensed, objective, and journalistic news brief for the '{$catName}' category this week. 
-
-Format the entire output as follows:
-1. One concise, three-sentence introductory paragraph.
-2. An HTML numbered list (<ol>, <li>) of the top 3-5 key headlines. **Do not use Markdown.**
-
-The entire response must be under 150 words. Do not use greetings or conversational phrases.
-
-Article Headlines for Synthesis:
-" . $list;
-                // Inside NewsController::index, under section B.
-
-                $newContent = $gemini->generateSummary($prompt);
-
-                $contentToSave = $newContent ?? "AI summary generation failed. Check logs for API errors.";
-
-                WeeklySummary::updateOrCreate(
-                    [
-                        'year' => $currentYear,
-                        'week_number' => $currentWeek,
-                        'category' => $category
-                    ],
-                    // Save the guaranteed non-null string
-                    ['summary_content' => $contentToSave]
-                );
-
-                $summary = $contentToSave;
-
-                // ... (rest of the else block remains the same)
-
-                // 3. Save to DB (Update or Create)
-                // WeeklySummary::updateOrCreate(
-                //     [
-                //         'year' => $currentYear,
-                //         'week_number' => $currentWeek,
-                //         'category' => $category
-                //     ],
-                //     ['summary_content' => $newContent]
-                // );
-
-                // $summary = $newContent;
-            } else {
-                $summary = "Not enough news articles this week to generate a summary.";
+            if ($existingSummary) {
+                $summary = $existingSummary->summary_content;
             }
         }
 
+        // Step 3: Generate subcategories if user clicked "Generate" and none exist
+        // BUT: Only if no subcategory is selected (otherwise we're generating summary, not topics)
+        if ($shouldGenerate && empty($subcategories) && !$subcategory) {
+            try {
+                $articleQuery = Article::whereBetween('publishedAt', [
+                    $now->copy()->startOfWeek()->timezone('UTC'),
+                    $now->copy()->endOfWeek()->timezone('UTC')
+                ]);
+                
+                if ($category) {
+                    $articleQuery->where('category', $category);
+                }
+
+                // REDUCED: Only take 20 most recent articles for faster processing
+                $articlesForAI = $articleQuery->latest()->limit(20)->get(['id', 'title', 'description']);
+
+                if ($articlesForAI->isNotEmpty()) {
+                    // Create a more concise list for AI
+                    $list = $articlesForAI->map(function($a) {
+                        $shortDesc = strlen($a->description) > 100 
+                            ? substr($a->description, 0, 100) . '...' 
+                            : $a->description;
+                        return "[{$a->id}] {$a->title}";
+                    })->implode("\n");
+                    
+                    $catName = $category ? ucfirst($category) : "General";
+                    
+                    // SIMPLIFIED PROMPT - Faster response
+                    $prompt = "Analyze these {$catName} headlines and create 4-5 subtopics. Return ONLY valid JSON:
+
+{
+  \"subcategories\": [\"topic-1\", \"topic-2\", \"topic-3\", \"topic-4\"],
+  \"article_mapping\": {
+    \"topic-1\": [1, 5, 12],
+    \"topic-2\": [2, 8],
+    ...
+  }
+}
+
+Rules:
+- Use lowercase-with-hyphens
+- Be specific (e.g., \"ai-technology\", \"smartphone-news\")
+- Assign each article ID to ONE subcategory
+
+Headlines:
+{$list}";
+
+                    $aiResponse = $gemini->generateSummary($prompt);
+                    
+                    // Clean and parse
+                    $cleanedResponse = preg_replace('/```json\s*|\s*```/', '', trim($aiResponse));
+                    $aiData = json_decode($cleanedResponse, true);
+                    
+                    if (is_array($aiData) && isset($aiData['subcategories']) && isset($aiData['article_mapping'])) {
+                        $subcategories = array_filter($aiData['subcategories'], function($subcat) {
+                            $generic = ['general', 'news', 'updates', 'other', 'miscellaneous'];
+                            return !in_array(strtolower($subcat), $generic);
+                        });
+                        
+                        // Cache the mapping
+                        $cacheKey = "subcategories_{$currentYear}_{$currentWeek}_{$category}";
+                        Cache::put($cacheKey, [
+                            'subcategories' => $subcategories,
+                            'mapping' => $aiData['article_mapping']
+                        ], now()->addWeek());
+                        
+                        // Save to DB
+                        foreach ($subcategories as $subcat) {
+                            WeeklySummary::updateOrCreate(
+                                [
+                                    'year' => $currentYear,
+                                    'week_number' => $currentWeek,
+                                    'category' => $category,
+                                    'subcategory' => $subcat
+                                ],
+                                ['summary_content' => null]
+                            );
+                        }
+                    } else {
+                        throw new \Exception("Invalid AI response format");
+                    }
+                } else {
+                    throw new \Exception("No articles found for this week");
+                }
+            } catch (\Exception $e) {
+                Log::error('Subcategory generation failed: ' . $e->getMessage());
+                
+                // Use fallback subcategories
+                $fallbackSubcats = $this->getFallbackSubcategories($category);
+                $subcategories = $fallbackSubcats;
+                
+                // Create simple mapping - split articles evenly
+                $allArticleIds = $articlesForAI->pluck('id')->toArray() ?? [];
+                $mapping = [];
+                $chunkSize = ceil(count($allArticleIds) / count($fallbackSubcats));
+                
+                foreach ($fallbackSubcats as $index => $subcat) {
+                    $offset = $index * $chunkSize;
+                    $mapping[$subcat] = array_slice($allArticleIds, $offset, $chunkSize);
+                    
+                    WeeklySummary::updateOrCreate(
+                        [
+                            'year' => $currentYear,
+                            'week_number' => $currentWeek,
+                            'category' => $category,
+                            'subcategory' => $subcat
+                        ],
+                        ['summary_content' => null]
+                    );
+                }
+                
+                // Cache fallback mapping
+                $cacheKey = "subcategories_{$currentYear}_{$currentWeek}_{$category}";
+                Cache::put($cacheKey, [
+                    'subcategories' => $subcategories,
+                    'mapping' => $mapping
+                ], now()->addWeek());
+            }
+        }
+
+        // Step 4: Generate summary for specific subcategory
+        // This triggers when user clicks "Generate Summary" on a selected topic
+        if ($subcategory && ($shouldGenerate || $shouldRegenerate)) {
+            try {
+                // Get article IDs from cache
+                $cacheKey = "subcategories_{$currentYear}_{$currentWeek}_{$category}";
+                $cachedData = Cache::get($cacheKey);
+                
+                $articleIds = $cachedData['mapping'][$subcategory] ?? [];
+                
+                if (!empty($articleIds)) {
+                    // Limit to 10 articles for summary generation
+                    $articlesForAI = Article::whereIn('id', $articleIds)
+                        ->latest('publishedAt')
+                        ->limit(10)
+                        ->get(['title', 'description']);
+
+                    if ($articlesForAI->isNotEmpty()) {
+                        $list = $articlesForAI->map(fn($a) => "- {$a->title}")->implode("\n");
+                        
+                        $prompt = "Write a brief 100-word summary about '{$subcategory}' news in '{$category}'.
+
+Include:
+1. One short paragraph (2-3 sentences)
+2. HTML list (<ol><li>) of 3 key points
+
+Headlines:
+{$list}";
+
+                        $newContent = $gemini->generateSummary($prompt);
+                        $contentToSave = $newContent ?? "Summary generation in progress...";
+
+                        WeeklySummary::updateOrCreate(
+                            [
+                                'year' => $currentYear,
+                                'week_number' => $currentWeek,
+                                'category' => $category,
+                                'subcategory' => $subcategory
+                            ],
+                            ['summary_content' => $contentToSave]
+                        );
+
+                        $summary = $contentToSave;
+                    } else {
+                        $summary = "No articles found for this topic.";
+                    }
+                } else {
+                    $summary = "No articles available for this topic.";
+                }
+            } catch (\Exception $e) {
+                Log::error('Summary generation failed: ' . $e->getMessage());
+                $summary = "Unable to generate summary. Please try again.";
+            }
+        }
+
+        // Article query with filters
         $query = Article::with('source')->orderBy('publishedAt', 'desc');
 
         if ($search) {
@@ -217,22 +248,53 @@ Article Headlines for Synthesis:
             $query->where('category', $category);
         }
 
+        // Filter by subcategory using cached mapping
+        if ($subcategory) {
+            $cacheKey = "subcategories_{$currentYear}_{$currentWeek}_{$category}";
+            $cachedData = Cache::get($cacheKey);
+            
+            if ($cachedData && isset($cachedData['mapping'][$subcategory])) {
+                $articleIds = $cachedData['mapping'][$subcategory];
+                $query->whereIn('id', $articleIds);
+            } else {
+                // Fallback to keyword search
+                $keywords = str_replace('-', ' ', $subcategory);
+                $query->where(function($q) use ($keywords) {
+                    $q->where('title', 'like', "%{$keywords}%")
+                      ->orWhere('description', 'like', "%{$keywords}%");
+                });
+            }
+        }
+
         $articles = $query->paginate($perPage);
 
-        // Final view data
         return view('news.index', [
             'articles' => $articles,
             'search' => $search,
-            'activeCategory' => $category, // Used by the category selector component
-            'summary' => $summary // Used by the summary box component
+            'activeCategory' => $category,
+            'activeSubcategory' => $subcategory,
+            'subcategories' => $subcategories,
+            'summary' => $summary
         ]);
+    }
+
+    private function getFallbackSubcategories($category)
+    {
+        $fallbacks = [
+            'technology' => ['ai-technology', 'mobile-devices', 'cybersecurity', 'software'],
+            'business' => ['stock-markets', 'crypto', 'startups', 'economy'],
+            'sports' => ['football', 'basketball', 'tennis', 'olympics'],
+            'entertainment' => ['movies', 'music', 'tv-shows', 'celebrities'],
+            'general' => ['politics', 'world-news', 'local', 'breaking-news']
+        ];
+
+        return $fallbacks[$category] ?? ['trending', 'top-stories', 'latest', 'featured'];
     }
 
     public function show($id)
     {
         $article = Article::with('source')->findOrFail($id);
 
-        // Get related articles from the same source
         $relatedArticles = Article::with('source')
             ->where('source_id', $article->source_id)
             ->where('id', '!=', $article->id)
@@ -246,11 +308,8 @@ Article Headlines for Synthesis:
     public function extendArticle($id, GeminiService $gemini)
     {
         $article = Article::findOrFail($id);
-
-        // Use Gemini to expand the article content
         $expanded = $gemini->extendContent($article->content, 400);
 
-        // Pass to view
         return view('articles.extended', [
             'article' => $article,
             'expandedContent' => $expanded
