@@ -23,4 +23,11 @@ Route::prefix('api')->group(function () {
     Route::get('news/search', [NewsController::class, 'search']);
 });
 
+// routes/web.php
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/my-summaries', [App\Http\Controllers\NewsController::class, 'mySummaries'])->name('my-summaries');
+    // ... your other auth routes
+});
+
 Route::get('/news/summary', [NewsController::class, 'getSummary'])->name('news.summary');

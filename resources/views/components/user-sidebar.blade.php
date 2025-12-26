@@ -15,9 +15,9 @@
             </button>
             
             <div class="flex flex-col items-center mt-4">
-                <img class="w-20 h-20 object-cover rounded-full border-4 border-white/20 mb-3"
-                    src="{{ auth()->user()->avatar == 'Unset' ? asset('file/blog/user.png') : asset('storage/' . auth()->user()->avatar) }}"
-                    alt="Profile">
+           <img class="w-20 h-20 object-cover rounded-full border-4 border-white/20 mb-3"
+     src="{{ Auth::user()->image ? asset('storage/' . Auth::user()->image) : 'https://ui-avatars.com/api/?name=' . urlencode(Auth::user()->name) }}"
+     alt="Profile">
                 <h3 class="text-lg font-bold">{{ auth()->user()->name }}</h3>
                 <p class="text-sm text-white/70">{{ auth()->user()->email }}</p>
                 <span class="mt-2 px-3 py-1 bg-white/20 rounded-full text-xs font-medium backdrop-blur-sm">
@@ -35,9 +35,9 @@
                     Dashboard
                 </a>
 
-                <a href="#" class="flex items-center px-4 py-3 text-gray-700 hover:bg-gray-50 hover:text-[#41479E] rounded-lg transition-colors group">
+                <a href="/my-summaries" class="flex items-center px-4 py-3 text-gray-700 hover:bg-gray-50 hover:text-[#41479E] rounded-lg transition-colors group">
                     <svg class="w-5 h-5 mr-3 text-gray-400 group-hover:text-[#41479E]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                    My Profile
+                    My Summaries
                 </a>
             </nav>
         </div>

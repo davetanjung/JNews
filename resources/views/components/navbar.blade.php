@@ -60,9 +60,9 @@
                     <button onclick="toggleUserSidebar()" class="relative group focus:outline-none">
                         <div class="flex items-center gap-3 bg-white/50 backdrop-blur-sm pl-4 pr-1 py-1 rounded-full border border-gray-200 hover:border-[#41479E] transition-all duration-300 cursor-pointer">
                             <span class="text-sm font-semibold text-[#41479E]">{{ Str::limit(auth()->user()->name, 10) }}</span>
-                            <img class="w-10 h-10 object-cover rounded-full border-2 border-white shadow-sm"
+                            {{-- <img class="w-10 h-10 object-cover rounded-full border-2 border-white shadow-sm"
                                 src="{{ $avatar }}"
-                                alt="user avatar">
+                                alt="user avatar"> --}}
                         </div>
                     </button>
                     
