@@ -3,15 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Article;
-
 use App\Models\WeeklySummary;
-use App\Models\UserSummary; // <--- 1. Import the model
+use App\Models\UserSummary;
 use App\Services\GeminiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth; // <--- 2. Import Auth
+use Illuminate\Support\Facades\Auth;
 
 class NewsController extends Controller
 {
@@ -35,7 +34,6 @@ class NewsController extends Controller
         $existingSubcategories = WeeklySummary::where('year', $currentYear)
             ->where('week_number', $currentWeek)
             ->where('category', $category)
-            ->whereNull('summary_content')
             ->whereNotNull('subcategory')
             ->pluck('subcategory')
             ->toArray();
@@ -61,22 +59,32 @@ class NewsController extends Controller
         // Step 3: Generate subcategories
         if ($shouldGenerate && empty($subcategories) && !$subcategory) {
             try {
+                // First, check if we have ANY articles for this category (not just this week)
+                $totalArticles = Article::where('category', $category)->count();
+                
+                if ($totalArticles === 0) {
+                    throw new \Exception("No articles exist in this category at all");
+                }
+
+                // Try to get articles from this week
                 $articleQuery = Article::whereBetween('publishedAt', [
                     $now->copy()->startOfWeek()->timezone('UTC'),
                     $now->copy()->endOfWeek()->timezone('UTC')
-                ]);
-
-                if ($category) {
-                    $articleQuery->where('category', $category);
-                }
+                ])->where('category', $category);
 
                 $articlesForAI = $articleQuery->latest()->limit(20)->get(['id', 'title', 'description']);
 
+                // If no articles this week, get recent articles instead
+                if ($articlesForAI->isEmpty()) {
+                    Log::info("No articles this week for {$category}, using recent articles");
+                    $articlesForAI = Article::where('category', $category)
+                        ->latest('publishedAt')
+                        ->limit(20)
+                        ->get(['id', 'title', 'description']);
+                }
+
                 if ($articlesForAI->isNotEmpty()) {
                     $list = $articlesForAI->map(function ($a) {
-                        $shortDesc = strlen($a->description) > 100
-                            ? substr($a->description, 0, 100) . '...'
-                            : $a->description;
                         return "[{$a->id}] {$a->title}";
                     })->implode("\n");
 
@@ -84,50 +92,116 @@ class NewsController extends Controller
 
                     $prompt = "Analyze these {$catName} headlines and create 4-5 subtopics. Return ONLY valid JSON:
                     { \"subcategories\": [\"topic-1\"], \"article_mapping\": { \"topic-1\": [1] } }
-                    Rules: Use lowercase-with-hyphens.
+                    Rules: Use lowercase-with-hyphens. Map each article ID to the most relevant topic.
                     Headlines: {$list}";
 
                     $aiResponse = $gemini->generateSummary($prompt);
                     $cleanedResponse = preg_replace('/```json\s*|\s*```/', '', trim($aiResponse));
                     $aiData = json_decode($cleanedResponse, true);
 
+                    Log::info('AI Response for subcategories:', [
+                        'raw' => $aiResponse,
+                        'cleaned' => $cleanedResponse,
+                        'decoded' => $aiData
+                    ]);
+
                     if (is_array($aiData) && isset($aiData['subcategories']) && isset($aiData['article_mapping'])) {
                         $subcategories = array_filter($aiData['subcategories'], fn($s) => !in_array(strtolower($s), ['general', 'news']));
 
+                        // Store in cache
                         $cacheKey = "subcategories_{$currentYear}_{$currentWeek}_{$category}";
                         Cache::put($cacheKey, [
                             'subcategories' => $subcategories,
                             'mapping' => $aiData['article_mapping']
                         ], now()->addWeek());
 
+                        // Store in database with article IDs
                         foreach ($subcategories as $subcat) {
+                            $articleIds = $aiData['article_mapping'][$subcat] ?? [];
+                            
+                            Log::info("Storing subcategory: {$subcat}", ['article_ids' => $articleIds]);
+                            
                             WeeklySummary::updateOrCreate(
-                                ['year' => $currentYear, 'week_number' => $currentWeek, 'category' => $category, 'subcategory' => $subcat],
-                                ['summary_content' => null]
+                                [
+                                    'year' => $currentYear,
+                                    'week_number' => $currentWeek,
+                                    'category' => $category,
+                                    'subcategory' => $subcat
+                                ],
+                                [
+                                    'summary_content' => null,
+                                    'article_ids' => json_encode($articleIds)
+                                ]
                             );
                         }
                     } else {
                         throw new \Exception("Invalid AI response format");
                     }
                 } else {
-                    throw new \Exception("No articles found");
+                    throw new \Exception("No articles found in category");
                 }
             } catch (\Exception $e) {
                 Log::error('Subcategory generation failed: ' . $e->getMessage());
+                
+                // Use fallback subcategories
                 $subcategories = $this->getFallbackSubcategories($category);
-                // (Fallback logic omitted for brevity, keeping your existing logic)
+                
+                // Get ALL articles from this category (any time period)
+                $allArticleIds = Article::where('category', $category)
+                    ->latest('publishedAt')
+                    ->limit(50)
+                    ->pluck('id')
+                    ->toArray();
+                
+                Log::info("Using fallback subcategories with {count} articles", [
+                    'count' => count($allArticleIds),
+                    'subcategories' => $subcategories
+                ]);
+                
+                // Store fallback subcategories with all available articles
+                foreach ($subcategories as $subcat) {
+                    WeeklySummary::updateOrCreate(
+                        [
+                            'year' => $currentYear,
+                            'week_number' => $currentWeek,
+                            'category' => $category,
+                            'subcategory' => $subcat
+                        ],
+                        [
+                            'summary_content' => null,
+                            'article_ids' => json_encode($allArticleIds)
+                        ]
+                    );
+                }
             }
         }
 
-        // Step 4: Generate summary for specific subcategory AND SAVE TO HISTORY
+        // Step 4: Generate summary for specific subcategory
         if ($subcategory && ($shouldGenerate || $shouldRegenerate)) {
             try {
+                // Try cache first, then database
                 $cacheKey = "subcategories_{$currentYear}_{$currentWeek}_{$category}";
                 $cachedData = Cache::get($cacheKey);
-                $articleIds = $cachedData['mapping'][$subcategory] ?? [];
+                $articleIds = $cachedData['mapping'][$subcategory] ?? null;
+
+                // If not in cache, get from database
+                if (is_null($articleIds)) {
+                    $summaryRecord = WeeklySummary::where('year', $currentYear)
+                        ->where('week_number', $currentWeek)
+                        ->where('category', $category)
+                        ->where('subcategory', $subcategory)
+                        ->first();
+
+                    if ($summaryRecord && $summaryRecord->article_ids) {
+                        $articleIds = json_decode($summaryRecord->article_ids, true);
+                    }
+                }
 
                 if (!empty($articleIds)) {
-                    $articlesForAI = Article::whereIn('id', $articleIds)->latest('publishedAt')->limit(10)->get(['title']);
+                    $articlesForAI = Article::whereIn('id', $articleIds)
+                        ->latest('publishedAt')
+                        ->limit(10)
+                        ->get(['title', 'description']);
 
                     if ($articlesForAI->isNotEmpty()) {
                         $list = $articlesForAI->map(fn($a) => "- {$a->title}")->implode("\n");
@@ -137,7 +211,6 @@ class NewsController extends Controller
                         $newContent = $gemini->generateSummary($prompt);
 
                         if (!empty($newContent)) {
-                            // A. Save to Global Weekly Summary (Your existing logic)
                             WeeklySummary::updateOrCreate(
                                 [
                                     'year' => $currentYear,
@@ -150,9 +223,8 @@ class NewsController extends Controller
 
                             $summary = $newContent;
 
-                            // B. Save to User History (NEW LOGIC)
+                            // Save to user history
                             if (Auth::check()) {
-                                // Optional: Prevent saving duplicates if they just generated the exact same text
                                 $lastSummary = UserSummary::where('user_id', Auth::id())
                                     ->latest()
                                     ->first();
@@ -165,8 +237,7 @@ class NewsController extends Controller
                                 }
                             }
                         } else {
-                            Log::error("Gemini returned empty response for $subcategory");
-                            $summary = "Failed to generate summary. Please click Generate again.";
+                            $summary = "Failed to generate summary. Please try again.";
                         }
                     } else {
                         $summary = "No articles found for this topic.";
@@ -180,7 +251,7 @@ class NewsController extends Controller
             }
         }
 
-        // Article query (standard)
+        // Article query
         $query = Article::with('source')->orderBy('publishedAt', 'desc');
 
         if ($search) {
@@ -189,17 +260,53 @@ class NewsController extends Controller
                     ->orWhere('description', 'like', '%' . $search . '%');
             });
         }
+        
         if ($category) {
             $query->where('category', $category);
         }
+        
         if ($subcategory) {
-            // (Subcategory filter logic remains the same)
-            $cacheKey = "subcategories_{$currentYear}_{$currentWeek}_{$category}";
-            $cachedData = Cache::get($cacheKey);
-            if ($cachedData && isset($cachedData['mapping'][$subcategory])) {
-                $query->whereIn('id', $cachedData['mapping'][$subcategory]);
+            // Get article IDs from database
+            $summaryRecord = WeeklySummary::where('year', $currentYear)
+                ->where('week_number', $currentWeek)
+                ->where('category', $category)
+                ->where('subcategory', $subcategory)
+                ->first();
+
+            $articleIds = null;
+
+            // Try database first
+            if ($summaryRecord && $summaryRecord->article_ids) {
+                $articleIds = json_decode($summaryRecord->article_ids, true);
+                Log::info("Found article IDs from database for {$subcategory}", [
+                    'count' => count($articleIds ?? [])
+                ]);
+            }
+
+            // Fallback to cache
+            if (empty($articleIds)) {
+                $cacheKey = "subcategories_{$currentYear}_{$currentWeek}_{$category}";
+                $cachedData = Cache::get($cacheKey);
+                
+                if ($cachedData && isset($cachedData['mapping'][$subcategory])) {
+                    $articleIds = $cachedData['mapping'][$subcategory];
+                    Log::info("Found article IDs from cache for {$subcategory}", [
+                        'count' => count($articleIds)
+                    ]);
+                }
+            }
+
+            // Apply filter
+            if (!empty($articleIds) && is_array($articleIds)) {
+                $query->whereIn('id', $articleIds);
             } else {
-                $query->where('title', 'like', "%" . str_replace('-', ' ', $subcategory) . "%");
+                // Last resort: fuzzy string matching
+                Log::warning("No article IDs found for subcategory: {$subcategory}, using fuzzy match");
+                $searchTerm = str_replace('-', ' ', $subcategory);
+                $query->where(function($q) use ($searchTerm) {
+                    $q->where('title', 'like', "%{$searchTerm}%")
+                      ->orWhere('description', 'like', "%{$searchTerm}%");
+                });
             }
         }
 
@@ -218,14 +325,14 @@ class NewsController extends Controller
     private function getFallbackSubcategories($category)
     {
         $fallbacks = [
-            'technology' => ['ai-technology', 'mobile-devices', 'cybersecurity', 'software'],
-            'business' => ['stock-markets', 'crypto', 'startups', 'economy'],
+            'technology' => ['ai-machine-learning', 'mobile-devices', 'cybersecurity', 'software-development'],
+            'business' => ['stock-markets', 'cryptocurrency', 'startups', 'economy'],
             'sports' => ['football', 'basketball', 'tennis', 'olympics'],
             'entertainment' => ['movies', 'music', 'tv-shows', 'celebrities'],
-            'general' => ['politics', 'world-news', 'local', 'breaking-news']
+            'general' => ['politics', 'world-news', 'local-news', 'breaking-news']
         ];
 
-        return $fallbacks[$category] ?? ['trending', 'top-stories', 'latest', 'featured'];
+        return $fallbacks[$category] ?? ['trending', 'top-stories', 'latest-news', 'featured'];
     }
 
     public function show($id)
@@ -240,17 +347,6 @@ class NewsController extends Controller
             ->get();
 
         return view('news.detail', compact('article', 'relatedArticles'));
-    }
-
-    public function extendArticle($id, GeminiService $gemini)
-    {
-        $article = Article::findOrFail($id);
-        $expanded = $gemini->extendContent($article->content, 400);
-
-        return view('articles.extended', [
-            'article' => $article,
-            'expandedContent' => $expanded
-        ]);
     }
 
     public function mySummaries()
