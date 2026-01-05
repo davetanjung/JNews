@@ -5,7 +5,7 @@
             {{-- LOGO --}}
             <div class="px-4 h-20">
                 <a href="/" class="h-full flex items-center">
-                    <img src="https://res.cloudinary.com/daavtibr2/image/upload/v1763311265/ucaooxqt7qmkvqgruh4w.png"
+                    <img src="https://res.cloudinary.com/daavtibr2/image/upload/v1767584702/qxtlo8tx3bgwhxwjmsqt.jpg"
                         class="h-10 sm:h-12" alt="Soko Financial Logo" />
                 </a>
             </div>
