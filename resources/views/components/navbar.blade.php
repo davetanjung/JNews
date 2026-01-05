@@ -23,16 +23,6 @@
             <div class="px-4 hidden absolute shadow-lg rounded-b-lg top-full w-full md:rounded-none md:shadow-none md:static md:block md:w-auto"
                 id="navbar-menu">
                 <ul class="flex-col rounded-b-lg bg-white md:bg-transparent md:flex-row flex md:space-x-2 lg:space-x-12 md:mt-0 text-base md:text-lg md:font-medium">
-                    <li>
-                        <a href="{{ route('home') }}" class="text-main-text hover:bg-[#f5f4f1] border-b border-[#f5f4f1] px-6 md:hover:bg-transparent md:border-0 block py-2 hover:text-primary-100 md:p-0 duration-300">
-                            Home
-                        </a>
-                    </li>
-                    <li>
-                        <a href="/about" class="text-main-text hover:bg-[#f5f4f1] border-b border-[#f5f4f1] px-6 md:hover:bg-transparent md:border-0 block py-2 hover:text-primary-100 md:p-0 duration-300">
-                            About
-                        </a>
-                    </li>
                 </ul>
             </div>
 
